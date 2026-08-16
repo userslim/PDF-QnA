@@ -5,14 +5,18 @@ from vector_store import VectorStore
 class QAEngine:
     def __init__(self, model: str = "mixtral-8x7b-32768"):
         self.model = model
-        self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GROQ_API_KEY is not set. Please provide your API key in the sidebar or set it as a secret."
+            )
+        self.client = Groq(api_key=api_key)
 
     def answer(self, question: str, vector_store: VectorStore, top_k: int = 5):
         retrieved = vector_store.retrieve(question, top_k=top_k)
         if not retrieved:
             return "No relevant content found.", []
 
-        # Build context with page/source references
         context_parts = []
         for item in retrieved:
             ref = f"[{item['source']}, page {item['page']}]"
@@ -29,15 +33,18 @@ Question: {question}
 
 Answer:"""
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are a document Q&A assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=512,
-        )
-        answer = response.choices[0].message.content
-        # Return the answer and the full retrieved items (with metadata)
-        return answer, retrieved
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a document Q&A assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=512,
+            )
+            answer = response.choices[0].message.content
+            return answer, retrieved
+        except Exception as e:
+            # Return a user‑friendly error message
+            return f"Error calling Groq API: {str(e)}", []
