@@ -1,4 +1,4 @@
-"""Document processor - PDF, Word, OCR support via Tesseract"""
+"""Document processor - PDF, Word, OCR support with Tesseract or EasyOCR fallback"""
 import os
 import uuid
 from pathlib import Path
@@ -30,39 +30,62 @@ class DocumentChunk:
 
 
 class DocumentProcessor:
-    """Document processor supporting multiple file formats + OCR via Tesseract"""
+    """Document processor with OCR support (Tesseract first, EasyOCR fallback)"""
 
     def __init__(self):
         self.ocr_available = False
+        self.ocr_engine = None
         self._try_load_ocr()
 
-def _try_load_ocr(self):
-    """Try to load Tesseract OCR."""
-    try:
-        import pytesseract
-        # Check if tesseract is installed and reachable
-        version = pytesseract.get_tesseract_version()
-        print(f"✅ Tesseract loaded, version: {version}")
-        self.ocr_engine = pytesseract
-        self.ocr_available = True
-    except Exception as e:
-        print(f"❌ Tesseract loading failed: {e}")
-        self.ocr_available = False
-        self.ocr_engine = None
+    def _try_load_ocr(self):
+        """Try Tesseract, fallback to EasyOCR if it fails."""
+        # 1. Try Tesseract
+        try:
+            import pytesseract
+            # Check if tesseract binary is available
+            pytesseract.get_tesseract_version()
+            self.ocr_engine = pytesseract
+            self.ocr_available = True
+            print("✅ Tesseract OCR loaded.")
+            return
+        except Exception as e:
+            print(f"⚠️ Tesseract not available: {e}")
+
+        # 2. Fallback to EasyOCR
+        try:
+            import easyocr
+            # Use CPU only (no GPU required)
+            self.ocr_engine = easyocr.Reader(['en'], gpu=False)
+            self.ocr_available = True
+            print("✅ EasyOCR loaded (fallback).")
+        except Exception as e:
+            print(f"❌ EasyOCR also failed: {e}")
+            self.ocr_available = False
+            self.ocr_engine = None
 
     def _ocr_image(self, image: Image.Image) -> str:
-        """Extract text from a PIL Image using Tesseract."""
+        """Extract text from a PIL Image using the available OCR engine."""
         if not self.ocr_available or self.ocr_engine is None:
             return ""
+
         try:
-            # You can add preprocessing (grayscale, threshold) if needed
-            text = self.ocr_engine.image_to_string(image, lang='eng')
-            return text.strip()
-        except Exception:
+            # Tesseract
+            if hasattr(self.ocr_engine, 'image_to_string'):
+                text = self.ocr_engine.image_to_string(image, lang='eng')
+                return text.strip()
+            # EasyOCR
+            else:
+                import numpy as np
+                img_array = np.array(image)
+                result = self.ocr_engine.readtext(img_array)
+                text = "\n".join([item[1] for item in result])
+                return text.strip()
+        except Exception as e:
+            print(f"OCR error on image: {e}")
             return ""
 
     def process_pdf(self, file_path: str) -> List[DocumentChunk]:
-        """Process PDF file - extract text from all pages, with OCR for images."""
+        """Process PDF file - extract text and OCR images."""
         chunks = []
         filename = os.path.basename(file_path)
 
@@ -80,7 +103,7 @@ def _try_load_ocr(self):
                         page=page_num + 1
                     ))
 
-                # OCR for embedded images (only if OCR is available)
+                # OCR for embedded images (if OCR is available)
                 if self.ocr_available:
                     try:
                         image_list = page.get_images(full=True)
@@ -98,7 +121,7 @@ def _try_load_ocr(self):
                                     page=page_num + 1
                                 ))
                     except Exception as e:
-                        print(f"OCR failed (page {page_num + 1}): {e}")
+                        print(f"OCR failed on page {page_num + 1}: {e}")
 
             doc.close()
         except Exception as e:
