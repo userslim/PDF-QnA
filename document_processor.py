@@ -40,7 +40,7 @@ class DocumentProcessor:
         """Try to load Tesseract OCR."""
         try:
             import pytesseract
-            # Check if tesseract is installed
+            # Check if tesseract is installed and reachable
             pytesseract.get_tesseract_version()
             self.ocr_engine = pytesseract
             self.ocr_available = True
@@ -53,8 +53,7 @@ class DocumentProcessor:
         if not self.ocr_available or self.ocr_engine is None:
             return ""
         try:
-            # Optional preprocessing: convert to grayscale, threshold, etc.
-            # For now, we just pass the image directly
+            # You can add preprocessing (grayscale, threshold) if needed
             text = self.ocr_engine.image_to_string(image, lang='eng')
             return text.strip()
         except Exception:
@@ -162,8 +161,3 @@ class DocumentProcessor:
         else:
             print(f"Unsupported file format: {ext}")
             return []
-
-
-if __name__ == "__main__":
-    processor = DocumentProcessor()
-    print(f"OCR available: {processor.ocr_available}")
