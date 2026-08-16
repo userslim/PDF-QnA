@@ -48,7 +48,7 @@ if uploaded_file is not None:
 
         # Build vector store
         vector_store = VectorStore()
-        vector_store.build_index(chunks, chunk_size=chunk_size)
+        vector_store.build_index(chunks)
         st.session_state.vector_store = vector_store
         st.session_state.file_name = uploaded_file.name
         st.session_state.chunks = chunks
