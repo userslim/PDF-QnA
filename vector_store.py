@@ -1,64 +1,93 @@
-import numpy as np
-from typing import List
+import chromadb
+from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
-import faiss
+from typing import List
 from document_processor import DocumentChunk
 
 
 class VectorStore:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model = SentenceTransformer(model_name)
-        self.index = None
-        self.chunks = []  # store original chunks with metadata
+        self.client = chromadb.Client(Settings(
+            chroma_db_impl="duckdb+parquet",
+            persist_directory="./chroma_db",
+            anonymized_telemetry=False
+        ))
+        self.collection = None
+        self.chunk_ids = []  # to map back to chunks
 
     def build_index(self, chunks: List[DocumentChunk], chunk_size: int = 1000):
-        """Split chunks into smaller pieces, embed, and build FAISS index."""
-        self.chunks = []
+        """Split chunks into smaller segments and store in ChromaDB."""
+        # Clear previous collection if exists
+        try:
+            self.client.delete_collection("doc_chunks")
+        except:
+            pass
+        self.collection = self.client.create_collection(name="doc_chunks")
+
+        self.chunk_ids = []
         all_texts = []
-        
+        metadatas = []
+        ids = []
+
         for chunk in chunks:
-            # Split long text into overlapping segments
             text = chunk.text
+            # Split into overlapping segments
             for i in range(0, len(text), chunk_size):
                 segment = text[i:i+chunk_size]
                 if segment.strip():
-                    # Create a new chunk object with same metadata
-                    new_chunk = DocumentChunk(
-                        text=segment,
-                        source=chunk.source,
-                        page=chunk.page,
-                        chunk_id=f"{chunk.chunk_id}_{i}"
-                    )
-                    self.chunks.append(new_chunk)
+                    unique_id = f"{chunk.chunk_id}_{i}"
+                    self.chunk_ids.append(unique_id)
                     all_texts.append(segment)
-        
+                    metadatas.append({
+                        "source": chunk.source,
+                        "page": str(chunk.page) if chunk.page else "unknown"
+                    })
+                    ids.append(unique_id)
+
         if not all_texts:
             return
-        
-        # Generate embeddings
-        embeddings = self.model.encode(all_texts, show_progress_bar=False)
-        embeddings = np.array(embeddings).astype('float32')
-        
-        # Build FAISS index
-        dim = embeddings.shape[1]
-        self.index = faiss.IndexFlatL2(dim)
-        self.index.add(embeddings)
+
+        # Generate embeddings using sentence-transformers
+        embeddings = self.model.encode(all_texts, show_progress_bar=False).tolist()
+
+        # Store in ChromaDB
+        self.collection.add(
+            embeddings=embeddings,
+            documents=all_texts,
+            metadatas=metadatas,
+            ids=ids
+        )
 
     def retrieve(self, query: str, top_k: int = 5) -> List[DocumentChunk]:
         """Retrieve top-k most similar chunks."""
-        if self.index is None or self.index.ntotal == 0:
+        if self.collection is None:
             return []
-        
-        query_embedding = self.model.encode([query]).astype('float32')
-        distances, indices = self.index.search(query_embedding, top_k)
-        
-        # Get unique chunks (by chunk_id) to avoid duplicates
+
+        query_embedding = self.model.encode([query]).tolist()
+        results = self.collection.query(
+            query_embeddings=query_embedding,
+            n_results=top_k,
+            include=["documents", "metadatas"]
+        )
+
+        retrieved = []
         seen = set()
-        results = []
-        for idx in indices[0]:
-            if idx < len(self.chunks):
-                chunk = self.chunks[idx]
-                if chunk.chunk_id not in seen:
-                    seen.add(chunk.chunk_id)
-                    results.append(chunk)
-        return results
+        docs = results['documents'][0] if results['documents'] else []
+        metas = results['metadatas'][0] if results['metadatas'] else []
+
+        for doc, meta in zip(docs, metas):
+            # Use source+page as a simple dedup key (you can improve)
+            key = f"{meta['source']}_{meta['page']}"
+            if key not in seen:
+                seen.add(key)
+                # Create a DocumentChunk from the retrieved data
+                chunk = DocumentChunk(
+                    text=doc,
+                    source=meta['source'],
+                    page=int(meta['page']) if meta['page'].isdigit() else None,
+                    chunk_id=key
+                )
+                retrieved.append(chunk)
+
+        return retrieved
