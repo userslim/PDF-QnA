@@ -9,15 +9,12 @@ class VectorStore:
         self.client = chromadb.PersistentClient(path=persist_dir)
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.collection_name = f"topic_{topic_name}"
-        # Get or create collection
         try:
             self.collection = self.client.get_collection(self.collection_name)
         except:
             self.collection = self.client.create_collection(self.collection_name)
-        self.chunk_ids = []
 
     def build_index(self, chunks: List[DocumentChunk], chunk_size: int = 1000):
-        # Clear and rebuild
         try:
             self.client.delete_collection(self.collection_name)
         except:
@@ -51,7 +48,10 @@ class VectorStore:
             ids=ids
         )
 
-    def retrieve(self, query: str, top_k: int = 5) -> List[DocumentChunk]:
+    def retrieve(self, query: str, top_k: int = 5) -> List[dict]:
+        """
+        Returns a list of dicts: { 'text': ..., 'source': ..., 'page': ... }
+        """
         if self.collection is None:
             return []
         query_embedding = self.model.encode([query]).tolist()
@@ -68,11 +68,9 @@ class VectorStore:
             key = f"{meta['source']}_{meta['page']}"
             if key not in seen:
                 seen.add(key)
-                chunk = DocumentChunk(
-                    text=doc,
-                    source=meta['source'],
-                    page=int(meta['page']) if meta['page'].isdigit() else None,
-                    chunk_id=key
-                )
-                retrieved.append(chunk)
+                retrieved.append({
+                    "text": doc,
+                    "source": meta['source'],
+                    "page": meta['page']
+                })
         return retrieved
