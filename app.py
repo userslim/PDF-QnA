@@ -74,8 +74,9 @@ if st.session_state.current_topic is not None:
     # Check OCR availability
     processor = DocumentProcessor()
     if not processor.ocr_available:
-        st.warning("⚠️ OCR is not available in this cloud environment. Scanned images inside PDFs will be skipped. "
-                   "Only text‑based documents will be processed.")
+        st.warning("⚠️ Tesseract OCR is not installed or not reachable. Scanned images will be skipped.")
+    else:
+        st.info("✅ Tesseract OCR is available – images inside PDFs will be transcribed.")
 
     uploaded_files = st.file_uploader(
         "Upload PDF or Word files (max 1000 MB total)",
@@ -108,7 +109,7 @@ if st.session_state.current_topic is not None:
                 f"total {len(st.session_state.topic_chunks[current_topic])} chunks indexed."
             )
         else:
-            st.warning("No text extracted from uploaded files. Ensure they are text‑based (not scanned images).")
+            st.warning("No text extracted from uploaded files. They may be empty or scanned with OCR unavailable.")
 
     # Question
     question = st.text_input("💬 Ask a question about the documents in this topic:")
