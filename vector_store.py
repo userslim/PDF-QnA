@@ -14,11 +14,9 @@ class VectorStore:
             anonymized_telemetry=False
         ))
         self.collection = None
-        self.chunk_ids = []  # to map back to chunks
+        self.chunk_ids = []
 
     def build_index(self, chunks: List[DocumentChunk], chunk_size: int = 1000):
-        """Split chunks into smaller segments and store in ChromaDB."""
-        # Clear previous collection if exists
         try:
             self.client.delete_collection("doc_chunks")
         except:
@@ -32,7 +30,6 @@ class VectorStore:
 
         for chunk in chunks:
             text = chunk.text
-            # Split into overlapping segments
             for i in range(0, len(text), chunk_size):
                 segment = text[i:i+chunk_size]
                 if segment.strip():
@@ -48,10 +45,7 @@ class VectorStore:
         if not all_texts:
             return
 
-        # Generate embeddings using sentence-transformers
         embeddings = self.model.encode(all_texts, show_progress_bar=False).tolist()
-
-        # Store in ChromaDB
         self.collection.add(
             embeddings=embeddings,
             documents=all_texts,
@@ -60,7 +54,6 @@ class VectorStore:
         )
 
     def retrieve(self, query: str, top_k: int = 5) -> List[DocumentChunk]:
-        """Retrieve top-k most similar chunks."""
         if self.collection is None:
             return []
 
@@ -77,11 +70,9 @@ class VectorStore:
         metas = results['metadatas'][0] if results['metadatas'] else []
 
         for doc, meta in zip(docs, metas):
-            # Use source+page as a simple dedup key (you can improve)
             key = f"{meta['source']}_{meta['page']}"
             if key not in seen:
                 seen.add(key)
-                # Create a DocumentChunk from the retrieved data
                 chunk = DocumentChunk(
                     text=doc,
                     source=meta['source'],
