@@ -49,9 +49,6 @@ class VectorStore:
         )
 
     def retrieve(self, query: str, top_k: int = 5) -> List[dict]:
-        """
-        Returns a list of dicts: { 'text': ..., 'source': ..., 'page': ... }
-        """
         if self.collection is None:
             return []
         query_embedding = self.model.encode([query]).tolist()
