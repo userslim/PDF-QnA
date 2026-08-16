@@ -1,0 +1,7 @@
+# Streamlit Cloud 系统依赖（用于 OCR）
+libgl1-mesa-glx
+libglib2.0-0
+libsm6
+libxext6
+libxrender1
+libgomp1
