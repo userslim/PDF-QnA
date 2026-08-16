@@ -1,21 +1,20 @@
-"""Document processor - PDF, Word, OCR support (OCR optional for cloud)"""
+"""Document processor - PDF, Word, OCR support via Tesseract"""
 import os
 import uuid
 from pathlib import Path
 from typing import List, Dict
-
-import numpy as np
 import pdfplumber
 import fitz  # PyMuPDF
 from docx import Document
 from PIL import Image
 import io
+import numpy as np
 
 
 class DocumentChunk:
     """Document chunk with text content and source information"""
 
-    def __init__(self, text: str, source: str, page: int = None, chunk_id: str = None):
+    def __init__(self, text: str, source: str, page=None, chunk_id: str = None):
         self.text = text
         self.source = source
         self.page = page
@@ -31,25 +30,38 @@ class DocumentChunk:
 
 
 class DocumentProcessor:
-    """Document processor supporting multiple file formats"""
+    """Document processor supporting multiple file formats + OCR via Tesseract"""
 
     def __init__(self):
-        self.ocr_engine = None
         self.ocr_available = False
         self._try_load_ocr()
 
     def _try_load_ocr(self):
-        """Try to load PaddleOCR - gracefully fall back if unavailable."""
+        """Try to load Tesseract OCR."""
         try:
-            from paddleocr import PaddleOCR
-            self.ocr_engine = PaddleOCR(use_angle_cls=True, lang='en')
+            import pytesseract
+            # Check if tesseract is installed
+            pytesseract.get_tesseract_version()
+            self.ocr_engine = pytesseract
             self.ocr_available = True
         except Exception:
             self.ocr_available = False
             self.ocr_engine = None
 
+    def _ocr_image(self, image: Image.Image) -> str:
+        """Extract text from a PIL Image using Tesseract."""
+        if not self.ocr_available or self.ocr_engine is None:
+            return ""
+        try:
+            # Optional preprocessing: convert to grayscale, threshold, etc.
+            # For now, we just pass the image directly
+            text = self.ocr_engine.image_to_string(image, lang='eng')
+            return text.strip()
+        except Exception:
+            return ""
+
     def process_pdf(self, file_path: str) -> List[DocumentChunk]:
-        """Process PDF file - extract text from all pages, with OCR for images if available."""
+        """Process PDF file - extract text from all pages, with OCR for images."""
         chunks = []
         filename = os.path.basename(file_path)
 
@@ -68,7 +80,7 @@ class DocumentProcessor:
                     ))
 
                 # OCR for embedded images (only if OCR is available)
-                if self.ocr_engine and self.ocr_available:
+                if self.ocr_available:
                     try:
                         image_list = page.get_images(full=True)
                         for img_index, img in enumerate(image_list):
@@ -77,16 +89,8 @@ class DocumentProcessor:
                             image_bytes = base_image["image"]
 
                             image = Image.open(io.BytesIO(image_bytes))
-                            img_array = np.array(image)
-
-                            # PaddleOCR API handling (supports both 'predict' and 'ocr' methods)
-                            try:
-                                ocr_result = self.ocr_engine.predict(img_array)
-                            except AttributeError:
-                                ocr_result = self.ocr_engine.ocr(img_array, cls=True)
-
-                            ocr_text = self._parse_ocr_result(ocr_result)
-                            if ocr_text.strip():
+                            ocr_text = self._ocr_image(image)
+                            if ocr_text:
                                 chunks.append(DocumentChunk(
                                     text=f"[OCR image text] {ocr_text}",
                                     source=filename,
@@ -113,45 +117,6 @@ class DocumentProcessor:
                 print(f"pdfplumber also failed: {e2}")
 
         return chunks
-
-    def _parse_ocr_result(self, ocr_result) -> str:
-        """
-        Parse PaddleOCR output into plain text.
-        Handles both list-of-detections and dictionary formats.
-        """
-        if not ocr_result:
-            return ""
-
-        ocr_text = ""
-
-        if isinstance(ocr_result, list):
-            # Typical output: list of detections, each detection = [bbox, (text, confidence)]
-            for detection in ocr_result:
-                if isinstance(detection, list) and len(detection) >= 2:
-                    text_part = detection[1]
-                    if isinstance(text_part, tuple) and len(text_part) >= 1:
-                        ocr_text += text_part[0] + "\n"
-                    else:
-                        ocr_text += str(text_part) + "\n"
-                # If the list contains nested lists (e.g., page-level), flatten
-                elif isinstance(detection, list) and len(detection) > 0 and isinstance(detection[0], list):
-                    for nested in detection:
-                        if isinstance(nested, list) and len(nested) >= 2:
-                            text_part = nested[1]
-                            if isinstance(text_part, tuple) and len(text_part) >= 1:
-                                ocr_text += text_part[0] + "\n"
-                            else:
-                                ocr_text += str(text_part) + "\n"
-        elif isinstance(ocr_result, dict):
-            # Some versions return a dict with 'rec_text' key
-            if 'rec_text' in ocr_result:
-                rec_text = ocr_result['rec_text']
-                if isinstance(rec_text, list):
-                    ocr_text = "\n".join(rec_text)
-                else:
-                    ocr_text = str(rec_text)
-
-        return ocr_text.strip()
 
     def process_word(self, file_path: str) -> List[DocumentChunk]:
         """Process Word document (paragraphs and tables)."""
