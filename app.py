@@ -19,6 +19,11 @@ if "current_topic" not in st.session_state:
 if "groq_api_key" not in st.session_state:
     st.session_state.groq_api_key = ""
 
+# Load API key from secrets (if available) and set environment
+if "GROQ_API_KEY" in st.secrets:
+    st.session_state.groq_api_key = st.secrets["GROQ_API_KEY"]
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+
 # --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Settings")
@@ -28,7 +33,12 @@ with st.sidebar:
         st.session_state.groq_api_key = api_key
         os.environ["GROQ_API_KEY"] = api_key
 
-    model = st.selectbox("Model", ["mixtral-8x7b-32768", "llama2-70b-4096"], index=0)
+    # Up‑to‑date model list (check Groq docs for available models)
+    model = st.selectbox(
+        "Model",
+        ["mixtral-8x7b-32768", "llama3-70b-8192", "llama3-8b-8192", "gemma2-9b-it"],
+        index=0
+    )
     chunk_size = st.slider("Chunk size (characters)", 500, 2000, 1000)
     top_k = st.slider("Top K chunks to retrieve", 2, 10, 5)
 
@@ -74,7 +84,7 @@ if st.session_state.current_topic is not None:
     # Check OCR availability
     processor = DocumentProcessor()
     if not processor.ocr_available:
-        st.warning("⚠️ Tesseract OCR is not installed or not reachable. Scanned images will be skipped.")
+        st.warning("⚠️ Tesseract OCR is not installed. Scanned images will be skipped.")
     else:
         st.info("✅ Tesseract OCR is available – images inside PDFs will be transcribed.")
 
@@ -118,19 +128,28 @@ if st.session_state.current_topic is not None:
         if vector_store is None:
             st.error("No vector store for this topic. Upload documents first.")
         else:
-            with st.spinner("Generating answer..."):
-                qa_engine = QAEngine(model=model)
-                answer, sources = qa_engine.answer(
-                    question,
-                    vector_store,
-                    top_k=top_k
-                )
-                st.markdown("### 💡 Answer")
-                st.write(answer)
-
-                with st.expander("📚 Sources (with location)"):
-                    for i, src in enumerate(sources):
-                        st.write(f"**Source {i+1}:** *{src['source']}*, page {src['page']}")
-                        st.write(f"`{src['text'][:300]}...`")
+            # Validate API key before making the call
+            if not os.environ.get("GROQ_API_KEY"):
+                st.error("❌ GROQ_API_KEY is not set. Please enter your API key in the sidebar or set it as a secret.")
+            else:
+                with st.spinner("Generating answer..."):
+                    try:
+                        qa_engine = QAEngine(model=model)
+                        answer, sources = qa_engine.answer(
+                            question,
+                            vector_store,
+                            top_k=top_k
+                        )
+                        if answer.startswith("Error calling Groq API:"):
+                            st.error(answer)
+                        else:
+                            st.markdown("### 💡 Answer")
+                            st.write(answer)
+                            with st.expander("📚 Sources (with location)"):
+                                for i, src in enumerate(sources):
+                                    st.write(f"**Source {i+1}:** *{src['source']}*, page {src['page']}")
+                                    st.write(f"`{src['text'][:300]}...`")
+                    except Exception as e:
+                        st.error(f"An error occurred: {str(e)}")
 else:
     st.info("👈 Please create or select a topic from the sidebar to get started.")
