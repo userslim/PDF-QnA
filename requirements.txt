@@ -1,12 +1,8 @@
-streamlit
-pdfplumber
-PyMuPDF
-python-docx
-Pillow
-numpy
-sentence-transformers
-faiss-cpu
-groq
-paddlepaddle
-paddleocr
-opencv-python-headless  # optional, but helps avoid GL errors
+streamlit>=1.28.0
+pdfplumber>=0.10.0
+PyMuPDF>=1.23.0
+python-docx>=1.1.0
+numpy>=1.24.0
+sentence-transformers>=2.2.0
+chromadb>=0.4.22
+groq>=0.4.0
