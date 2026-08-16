@@ -1,13 +1,12 @@
-streamlit>=1.28.0
-langchain>=0.1.0
-langchain-community>=0.0.20
-chromadb>=0.4.22
-ollama>=0.1.0
-requests>=2.31.0
-pypdf>=3.17.0
-pdfplumber>=0.10.0
-pymupdf>=1.23.0
-python-docx>=1.1.0
-python-pptx>=0.6.23
-reportlab>=4.0.0
-python-dotenv>=1.0.0
+streamlit
+pdfplumber
+PyMuPDF
+python-docx
+Pillow
+numpy
+sentence-transformers
+faiss-cpu
+groq
+paddlepaddle
+paddleocr
+opencv-python-headless  # optional, but helps avoid GL errors
