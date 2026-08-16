@@ -1,22 +1,28 @@
 import os
-from groq import Groq
+import google.generativeai as genai
 from vector_store import VectorStore
 
 class QAEngine:
-    def __init__(self, model: str = "mixtral-8x7b-32768"):
-        self.model = model
-        api_key = os.environ.get("GROQ_API_KEY")
+    def __init__(self, model: str = "gemini-1.5-flash"):
+        """
+        Initialize Gemini client.
+        Available models: 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp'
+        """
+        self.model_name = model
+        api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise ValueError(
-                "GROQ_API_KEY is not set. Please provide your API key in the sidebar or set it as a secret."
+                "GEMINI_API_KEY is not set. Please provide your API key in the sidebar or set it as a secret."
             )
-        self.client = Groq(api_key=api_key)
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel(model)
 
     def answer(self, question: str, vector_store: VectorStore, top_k: int = 5):
         retrieved = vector_store.retrieve(question, top_k=top_k)
         if not retrieved:
             return "No relevant content found.", []
 
+        # Build context with source references
         context_parts = []
         for item in retrieved:
             ref = f"[{item['source']}, page {item['page']}]"
@@ -34,17 +40,9 @@ Question: {question}
 Answer:"""
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a document Q&A assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,
-                max_tokens=512,
-            )
-            answer = response.choices[0].message.content
+            # Generate response using Gemini
+            response = self.model.generate_content(prompt)
+            answer = response.text.strip()
             return answer, retrieved
         except Exception as e:
-            # Return a user‑friendly error message
-            return f"Error calling Groq API: {str(e)}", []
+            return f"Error calling Gemini API: {str(e)}", []
