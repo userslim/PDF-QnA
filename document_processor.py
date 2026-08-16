@@ -36,17 +36,19 @@ class DocumentProcessor:
         self.ocr_available = False
         self._try_load_ocr()
 
-    def _try_load_ocr(self):
-        """Try to load Tesseract OCR."""
-        try:
-            import pytesseract
-            # Check if tesseract is installed and reachable
-            pytesseract.get_tesseract_version()
-            self.ocr_engine = pytesseract
-            self.ocr_available = True
-        except Exception:
-            self.ocr_available = False
-            self.ocr_engine = None
+def _try_load_ocr(self):
+    """Try to load Tesseract OCR."""
+    try:
+        import pytesseract
+        # Check if tesseract is installed and reachable
+        version = pytesseract.get_tesseract_version()
+        print(f"✅ Tesseract loaded, version: {version}")
+        self.ocr_engine = pytesseract
+        self.ocr_available = True
+    except Exception as e:
+        print(f"❌ Tesseract loading failed: {e}")
+        self.ocr_available = False
+        self.ocr_engine = None
 
     def _ocr_image(self, image: Image.Image) -> str:
         """Extract text from a PIL Image using Tesseract."""
