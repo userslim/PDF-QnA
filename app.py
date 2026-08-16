@@ -71,6 +71,12 @@ if st.session_state.current_topic is not None:
     current_topic = st.session_state.current_topic
     st.subheader(f"📌 Current Topic: **{current_topic}**")
 
+    # Check OCR availability
+    processor = DocumentProcessor()
+    if not processor.ocr_available:
+        st.warning("⚠️ OCR is not available in this cloud environment. Scanned images inside PDFs will be skipped. "
+                   "Only text‑based documents will be processed.")
+
     uploaded_files = st.file_uploader(
         "Upload PDF or Word files (max 1000 MB total)",
         type=["pdf", "docx"],
@@ -78,7 +84,6 @@ if st.session_state.current_topic is not None:
     )
 
     if uploaded_files and st.button("📤 Process uploaded files"):
-        processor = DocumentProcessor()
         all_chunks = []
         for uploaded_file in uploaded_files:
             with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp:
@@ -103,7 +108,7 @@ if st.session_state.current_topic is not None:
                 f"total {len(st.session_state.topic_chunks[current_topic])} chunks indexed."
             )
         else:
-            st.warning("No text extracted from uploaded files. (OCR may be disabled)")
+            st.warning("No text extracted from uploaded files. Ensure they are text‑based (not scanned images).")
 
     # Question
     question = st.text_input("💬 Ask a question about the documents in this topic:")
