@@ -9,17 +9,17 @@ from qa_engine import QAEngine
 st.set_page_config(page_title="Multi‑Topic PDF/Word Q&A", layout="wide")
 st.title("📄 Multi‑Topic PDF/Word Q&A with Groq")
 
-# --- Session state initialisation ---
+# --- Session state init ---
 if "topics" not in st.session_state:
-    st.session_state.topics = {}          # topic_name -> VectorStore
+    st.session_state.topics = {}
 if "topic_chunks" not in st.session_state:
-    st.session_state.topic_chunks = {}    # topic_name -> list of DocumentChunk
+    st.session_state.topic_chunks = {}
 if "current_topic" not in st.session_state:
     st.session_state.current_topic = None
 if "groq_api_key" not in st.session_state:
     st.session_state.groq_api_key = ""
 
-# --- Sidebar: API key, model, topic management ---
+# --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Settings")
     api_key = st.text_input("Groq API Key", type="password",
@@ -35,7 +35,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📂 Topics")
 
-    # Create new topic
     new_topic = st.text_input("New topic name")
     if st.button("➕ Create Topic"):
         if new_topic and new_topic not in st.session_state.topics:
@@ -49,7 +48,6 @@ with st.sidebar:
         else:
             st.warning("Enter a topic name.")
 
-    # Select existing topic
     topic_names = list(st.session_state.topics.keys())
     if topic_names:
         current = st.session_state.current_topic
@@ -66,15 +64,13 @@ with st.sidebar:
         st.session_state.topics = {}
         st.session_state.topic_chunks = {}
         st.session_state.current_topic = None
-        # Also delete the physical ChromaDB folder? Optional.
         st.rerun()
 
-# --- Main area: upload & question ---
+# --- Main area ---
 if st.session_state.current_topic is not None:
     current_topic = st.session_state.current_topic
     st.subheader(f"📌 Current Topic: **{current_topic}**")
 
-    # File upload (multiple files)
     uploaded_files = st.file_uploader(
         "Upload PDF or Word files (max 1000 MB total)",
         type=["pdf", "docx"],
@@ -85,7 +81,6 @@ if st.session_state.current_topic is not None:
         processor = DocumentProcessor()
         all_chunks = []
         for uploaded_file in uploaded_files:
-            # Save temporarily
             with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp:
                 tmp.write(uploaded_file.getvalue())
                 tmp_path = tmp.name
@@ -94,12 +89,10 @@ if st.session_state.current_topic is not None:
             os.unlink(tmp_path)
 
         if all_chunks:
-            # Append to existing chunks for this topic
             if current_topic not in st.session_state.topic_chunks:
                 st.session_state.topic_chunks[current_topic] = []
             st.session_state.topic_chunks[current_topic].extend(all_chunks)
 
-            # Rebuild vector store
             vector_store = st.session_state.topics[current_topic]
             vector_store.build_index(
                 st.session_state.topic_chunks[current_topic],
@@ -110,14 +103,14 @@ if st.session_state.current_topic is not None:
                 f"total {len(st.session_state.topic_chunks[current_topic])} chunks indexed."
             )
         else:
-            st.warning("No text extracted from uploaded files.")
+            st.warning("No text extracted from uploaded files. (OCR may be disabled)")
 
-    # Question answering
+    # Question
     question = st.text_input("💬 Ask a question about the documents in this topic:")
     if question:
         vector_store = st.session_state.topics.get(current_topic)
         if vector_store is None:
-            st.error("No vector store for this topic. Please upload documents first.")
+            st.error("No vector store for this topic. Upload documents first.")
         else:
             with st.spinner("Generating answer..."):
                 qa_engine = QAEngine(model=model)
@@ -128,8 +121,10 @@ if st.session_state.current_topic is not None:
                 )
                 st.markdown("### 💡 Answer")
                 st.write(answer)
-                with st.expander("📚 Sources"):
+
+                with st.expander("📚 Sources (with location)"):
                     for i, src in enumerate(sources):
-                        st.write(f"**Source {i+1}:** {src[:500]}...")
+                        st.write(f"**Source {i+1}:** *{src['source']}*, page {src['page']}")
+                        st.write(f"`{src['text'][:300]}...`")
 else:
     st.info("👈 Please create or select a topic from the sidebar to get started.")
